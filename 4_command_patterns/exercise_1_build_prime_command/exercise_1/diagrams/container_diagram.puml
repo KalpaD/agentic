@@ -1,0 +1,24 @@
+@startuml
+!include https://raw.githubusercontent.com/plantuml-stdlib/C4-PlantUML/master/C4_Container.puml
+
+Person(user, "User", "Web browser")
+
+System_Boundary(pfm, "Personal Finance Manager") {
+    Container(spa, "React SPA", "TypeScript", "Single-page application.\nHandles auth flows via Cognito SDK.\nCalls REST API with Cognito JWT.")
+    Container(api, "FastAPI Backend", "Python 3.12 · FastAPI · SQLModel · uvicorn", "Stateless REST API.\nValidates Cognito JWTs.\nManages accounts, transactions, categories.")
+    ContainerDb(db, "PostgreSQL 16", "AWS RDS (Multi-AZ)", "Persistent financial data:\n accounts, transactions, categories.")
+}
+
+System_Ext(cognito, "AWS Cognito", "User Pool + App Client.\nRegistration, login, email verification,\naccess + refresh + ID tokens.")
+System_Ext(cf, "CloudFront + S3", "CDN — serves the compiled SPA")
+System_Ext(alb, "Application Load Balancer", "TLS termination · health checks · traffic routing")
+
+Rel(user, cf, "HTTPS", "Browser")
+Rel(cf, spa, "Serves compiled SPA", "S3 origin")
+Rel(spa, cognito, "Register / login / refresh token", "HTTPS / Cognito SDK")
+Rel(spa, alb, "REST calls /api/v1/...\nAuthorization: Bearer <Cognito access token>", "HTTPS")
+Rel(alb, api, "Routes to container", "HTTP (private VPC)")
+Rel(api, cognito, "Fetch JWKS (public keys)\nto validate incoming JWTs", "HTTPS (cached)")
+Rel(api, db, "Async SQL", "asyncpg / SQLAlchemy 2")
+
+@enduml

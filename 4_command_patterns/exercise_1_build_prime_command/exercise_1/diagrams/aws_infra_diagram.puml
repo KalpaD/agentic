@@ -1,0 +1,46 @@
+@startuml
+!include https://raw.githubusercontent.com/plantuml-stdlib/C4-PlantUML/master/C4_Deployment.puml
+
+Deployment_Node(aws, "AWS — ap-southeast-2", "Cloud Provider") {
+
+    Deployment_Node(cognito_node, "AWS Cognito") {
+        Container(cognito, "User Pool + App Client", "Cognito", "Registration, login, email verification.\nIssues RS256 JWTs.\nManages refresh tokens.")
+    }
+
+    Deployment_Node(edge, "Edge / CDN") {
+        Container(cf, "CloudFront Distribution", "CDN", "Serves SPA from S3.\nProxies /api/* to ALB.\nTLS via ACM.")
+        Container(s3, "S3 Bucket", "Static Assets", "Compiled React SPA.\nNot publicly accessible — OAC only.")
+    }
+
+    Deployment_Node(vpc, "VPC (ap-southeast-2)") {
+
+        Deployment_Node(pub_subnets, "Public Subnets (AZ-a, AZ-b)") {
+            Container(alb, "Application Load Balancer", "AWS ALB", "TLS termination (ACM cert).\nHealth checks.\nRoutes /api/* to ECS target group.")
+        }
+
+        Deployment_Node(priv_subnets, "Private Subnets (AZ-a, AZ-b)") {
+            Container(ecs_a, "ECS Fargate Task (AZ-a)", "Docker · Python 3.12", "FastAPI + uvicorn.\nValidates Cognito JWTs.\nAuto-scales 1–4 tasks.")
+            Container(ecs_b, "ECS Fargate Task (AZ-b)", "Docker · Python 3.12", "Scale-out task.")
+            ContainerDb(rds_primary, "RDS PostgreSQL 16 — Primary", "db.t3.small", "Financial data store.")
+            ContainerDb(rds_standby, "RDS PostgreSQL 16 — Standby", "Multi-AZ", "Automatic failover.")
+        }
+
+        Deployment_Node(support, "Supporting Services") {
+            Container(secrets, "Secrets Manager", "AWS", "DB credentials.\nIAM-role-only access.")
+            Container(ecr, "ECR", "Container Registry", "Versioned backend Docker images.")
+        }
+    }
+}
+
+Rel(cf, s3, "Origin (OAC)", "HTTPS")
+Rel(cf, alb, "Proxy /api/*", "HTTPS")
+Rel(alb, ecs_a, "HTTP", "Port 8000")
+Rel(alb, ecs_b, "HTTP", "Port 8000")
+Rel(ecs_a, rds_primary, "asyncpg SSL", "Port 5432")
+Rel(ecs_b, rds_primary, "asyncpg SSL", "Port 5432")
+Rel(rds_primary, rds_standby, "Sync replication", "Internal")
+Rel(ecs_a, cognito, "Fetch JWKS (cached)", "HTTPS")
+Rel(ecs_a, secrets, "Read at startup", "HTTPS / IAM")
+Rel(ecr, ecs_a, "Image pull", "HTTPS")
+
+@enduml

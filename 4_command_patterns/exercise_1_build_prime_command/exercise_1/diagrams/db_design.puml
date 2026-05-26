@@ -1,0 +1,37 @@
+@startuml
+entity "accounts" {
+  * id           : UUID        <<PK>>
+  --
+  * owner_id     : TEXT        <<Cognito sub — indexed>>
+  * name         : VARCHAR(100)
+  * currency     : CHAR(3)
+  * created_at   : TIMESTAMPTZ
+  * updated_at   : TIMESTAMPTZ
+}
+
+entity "categories" {
+  * id           : UUID <<PK>>
+  --
+  * owner_id     : TEXT        <<Cognito sub — indexed>>
+  * name         : VARCHAR(50)
+  * created_at   : TIMESTAMPTZ
+  --
+  UNIQUE(owner_id, name)
+}
+
+entity "transactions" {
+  * id           : UUID <<PK>>
+  --
+  * account_id   : UUID <<FK → accounts.id CASCADE>>
+  o category_id  : UUID <<FK → categories.id SET NULL, nullable>>
+  * type         : VARCHAR(7)   CHECK IN ('INCOME','EXPENSE')
+  * amount       : NUMERIC(12,2) CHECK > 0
+  * description  : VARCHAR(255)
+  * date         : DATE
+  * created_at   : TIMESTAMPTZ
+  * updated_at   : TIMESTAMPTZ
+}
+
+accounts      ||--o{ transactions : "contains"
+categories    |o--o{ transactions : "labels (nullable)"
+@enduml
