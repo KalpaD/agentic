@@ -1,0 +1,35 @@
+@startuml
+actor User
+participant "React SPA\n(@aws-amplify/auth)" as SPA
+participant "AWS Cognito\nUser Pool" as Cognito
+participant "FastAPI Backend" as API
+participant "Cognito JWKS\nEndpoint" as JWKS
+
+== Registration ==
+User -> SPA : Enter email + password
+SPA -> Cognito : signUp(email, password)
+Cognito -> User : Verification email (6-digit code)
+User -> SPA : Enter verification code
+SPA -> Cognito : confirmSignUp(email, code)
+Cognito --> SPA : User confirmed
+
+== Login ==
+User -> SPA : Enter email + password
+SPA -> Cognito : signIn(email, password)
+Cognito --> SPA : { accessToken, idToken, refreshToken }
+SPA -> SPA : Store tokens (Amplify manages storage)
+
+== Authenticated API Call ==
+User -> SPA : Interact with app
+SPA -> SPA : Amplify.getAccessToken()
+SPA -> API : GET /api/v1/accounts\nAuthorization: Bearer <accessToken>
+API -> JWKS : GET /.well-known/jwks.json\n(cached; refreshed on key rotation)
+JWKS --> API : Public keys
+API -> API : Validate JWT signature + expiry\nExtract sub (user_id)
+API -> API : Execute business logic\nscoped to sub
+API --> SPA : 200 OK { accounts: [...] }
+
+== Token Refresh ==
+SPA -> Cognito : (Automatic — Amplify detects expiry)
+Cognito --> SPA : New accessToken
+@enduml

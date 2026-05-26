@@ -1,0 +1,16 @@
+@startuml
+!include https://raw.githubusercontent.com/plantuml-stdlib/C4-PlantUML/master/C4_Context.puml
+
+Person(user, "Individual User", "Tracks personal income and expenses\nvia a web browser")
+
+System(pfm, "Personal Finance Manager", "Web application for recording and\nanalysing personal financial transactions")
+
+System_Ext(cognito, "AWS Cognito", "Managed identity service.\nHandles registration, login,\nemail verification, and JWT issuance.")
+
+System_Ext(aws, "AWS Cloud", "Hosts all infrastructure:\ncompute, storage, database, CDN")
+
+Rel(user, pfm, "Uses the app", "HTTPS")
+Rel(pfm, cognito, "Delegates auth — registration,\nlogin, token refresh", "HTTPS / Cognito SDK")
+Rel(pfm, aws, "Deployed on", "Terraform-managed")
+
+@enduml
