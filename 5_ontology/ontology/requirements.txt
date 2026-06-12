@@ -1,0 +1,9 @@
+# Python 3.10–3.14 required
+# Install: pip install -r requirements.txt
+
+cognee==1.1.2
+anthropic==0.107.0
+fastembed==0.8.0
+lancedb==0.33.0
+pypdf==6.13.0
+rdflib==7.1.4

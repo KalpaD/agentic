@@ -1,0 +1,181 @@
+@prefix ex: <http://example.org/casa-extracted#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+
+ex:agreement a ex:EntityType ;
+    rdfs:label "agreement" .
+
+ex:association_of_professional_engineers_scientists_and_managers_australia a ex:Entity ;
+    rdfs:label "association of professional engineers, scientists and managers australia" ;
+    ex:bargaining_representative_for ex:civil_aviation_safety_authority_enterprise_agreement_2023_2026 .
+
+ex:australian_federation_of_air_pilots a ex:Entity ;
+    rdfs:label "australian federation of air pilots" ;
+    ex:bargaining_representative_for ex:civil_aviation_safety_authority_enterprise_agreement_2023_2026 .
+
+ex:australian_licensed_aircraft_engineers_association a ex:Entity ;
+    rdfs:label "australian licensed aircraft engineers association" ;
+    ex:bargaining_representative_for ex:civil_aviation_safety_authority_enterprise_agreement_2023_2026 .
+
+ex:chief_executive_officer_and_director_of_aviation_safety a ex:Entity ;
+    rdfs:label "chief executive officer and director of aviation safety" ;
+    ex:appointed_under ex:civil_aviation_act_1988 ;
+    ex:can_delegate_powers_under ex:civil_aviation_safety_authority_enterprise_agreement_2023_2026 ;
+    ex:represents ex:commonwealth_of_australia .
+
+ex:classification a ex:EntityType ;
+    rdfs:label "classification" .
+
+ex:community_and_public_sector_union a ex:Entity ;
+    rdfs:label "community and public sector union" ;
+    ex:bargaining_representative_for ex:civil_aviation_safety_authority_enterprise_agreement_2023_2026 .
+
+ex:concept a ex:EntityType ;
+    rdfs:label "concept" .
+
+ex:date a ex:EntityType ;
+    rdfs:label "date" .
+
+ex:director_of_aviation_safety a ex:Entity ;
+    rdfs:label "director of aviation safety" ;
+    ex:excluded_from ex:civil_aviation_safety_authority_enterprise_agreement_2023_2026 .
+
+ex:legislation a ex:EntityType ;
+    rdfs:label "legislation" .
+
+ex:long_service_leave_commonwealth_employees_regulation_2016 a ex:Entity ;
+    rdfs:label "long service leave (commonwealth employees) regulation 2016" .
+
+ex:organization a ex:EntityType ;
+    rdfs:label "organization" .
+
+ex:role a ex:EntityType ;
+    rdfs:label "role" .
+
+ex:16_november_2026 a ex:Entity ;
+    rdfs:label "16 november 2026" .
+
+ex:australian_defence_forces a ex:Entity ;
+    rdfs:label "australian defence forces" .
+
+ex:australian_government_industry_award_2016 a ex:Entity ;
+    rdfs:label "australian government industry award 2016" .
+
+ex:australian_public_service a ex:Entity ;
+    rdfs:label "australian public service" .
+
+ex:casa_capability_framework a ex:Entity ;
+    rdfs:label "casa capability framework" .
+
+ex:casa_values a ex:Entity ;
+    rdfs:label "casa values" .
+
+ex:civil_aviation_safety_authority a ex:Entity ;
+    rdfs:label "civil aviation safety authority" ;
+    ex:employs_under ex:civil_aviation_act_1988 ;
+    ex:recognises_service_from ex:australian_defence_forces,
+        ex:australian_public_service .
+
+ex:commonwealth_of_australia a ex:Entity ;
+    rdfs:label "commonwealth of australia" .
+
+ex:corporate_services_level_3 a ex:Entity ;
+    rdfs:label "corporate services level 3" .
+
+ex:emergency_duty a ex:Entity ;
+    rdfs:label "emergency duty" ;
+    ex:applies_to_employees_under ex:overtime_barrier ;
+    ex:may_entitle_to ex:motor_vehicle_allowance,
+        ex:overtime_meal_allowance ;
+    ex:triggers ex:rest_relief_after_overtime .
+
+ex:employee a ex:Entity ;
+    rdfs:label "employee" .
+
+ex:fair_work_act_2009 a ex:Entity ;
+    rdfs:label "fair work act 2009" .
+
+ex:fair_work_commission a ex:Entity ;
+    rdfs:label "fair work commission" .
+
+ex:february_2024 a ex:Entity ;
+    rdfs:label "february 2024" .
+
+ex:flex_debits a ex:Entity ;
+    rdfs:label "flex debits" ;
+    ex:calculated_within ex:settlement_period .
+
+ex:flex_leave a ex:Entity ;
+    rdfs:label "flex leave" ;
+    ex:drawn_from ex:flex_credits .
+
+ex:long_service_leave_act_1976 a ex:Entity ;
+    rdfs:label "long service leave act 1976" .
+
+ex:motor_vehicle_allowance a ex:Entity ;
+    rdfs:label "motor vehicle allowance" .
+
+ex:national_employment_standards a ex:Entity ;
+    rdfs:label "national employment standards" .
+
+ex:primary_caregiver a ex:Entity ;
+    rdfs:label "primary caregiver" .
+
+ex:secondary_caregiver a ex:Entity ;
+    rdfs:label "secondary caregiver" .
+
+ex:time_off_in_lieu a ex:Entity ;
+    rdfs:label "time off in lieu" ;
+    ex:substitutes ex:overtime .
+
+ex:civil_aviation_act_1988 a ex:Entity ;
+    rdfs:label "civil aviation act 1988" .
+
+ex:flex_credits a ex:Entity ;
+    rdfs:label "flex credits" ;
+    ex:calculated_within ex:settlement_period .
+
+ex:overtime_meal_allowance a ex:Entity ;
+    rdfs:label "overtime meal allowance" ;
+    ex:associated_with ex:overtime .
+
+ex:rest_relief_after_overtime a ex:Entity ;
+    rdfs:label "rest relief after overtime" ;
+    ex:applies_after ex:overtime .
+
+ex:overtime_barrier a ex:Entity ;
+    rdfs:label "overtime barrier" ;
+    ex:defined_as ex:corporate_services_level_3 .
+
+ex:settlement_period a ex:Entity ;
+    rdfs:label "settlement period" .
+
+ex:overtime a ex:Entity ;
+    rdfs:label "overtime" ;
+    ex:eligibility_determined_by ex:overtime_barrier .
+
+ex:civil_aviation_safety_authority_enterprise_agreement_2023_2026 a ex:Entity ;
+    rdfs:label "civil aviation safety authority enterprise agreement 2023-2026" ;
+    ex:approved_by ex:fair_work_commission ;
+    ex:covers_employees ex:employee ;
+    ex:covers_employer ex:civil_aviation_safety_authority ;
+    ex:defines ex:primary_caregiver,
+        ex:secondary_caregiver,
+        ex:settlement_period ;
+    ex:establishes ex:overtime_barrier ;
+    ex:governs ex:emergency_duty,
+        ex:flex_credits,
+        ex:flex_debits,
+        ex:flex_leave,
+        ex:overtime,
+        ex:overtime_meal_allowance,
+        ex:rest_relief_after_overtime,
+        ex:time_off_in_lieu ;
+    ex:has_nominal_expiry_date ex:16_november_2026 ;
+    ex:made_pursuant_to ex:fair_work_act_2009 ;
+    ex:published_on ex:february_2024 ;
+    ex:references ex:australian_government_industry_award_2016,
+        ex:casa_capability_framework,
+        ex:casa_values,
+        ex:long_service_leave_act_1976,
+        ex:national_employment_standards .
+
