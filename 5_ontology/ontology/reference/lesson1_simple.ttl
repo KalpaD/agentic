@@ -1,0 +1,46 @@
+# ===========================================================
+# lesson1_simple.ttl  —  a tiny ontology + a few facts
+# Format: Turtle (.ttl), a text format for writing RDF triples
+# ===========================================================
+
+# --- PREFIXES: short nicknames for long URLs (just to save typing) ---
+@prefix rdf:  <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix ex:   <http://example.org/hr#> .          # "ex" = our own namespace
+
+
+# ===========================================================
+# PART 1 — THE ONTOLOGY (the schema / the "rulebook")
+# This says what TYPES of things exist and how they may relate.
+# Nothing here is a real person yet — these are categories.
+# ===========================================================
+
+ex:Person   a rdfs:Class .
+ex:Employee a rdfs:Class ;
+            rdfs:subClassOf ex:Person .          # every Employee is a Person
+ex:Manager  a rdfs:Class ;
+            rdfs:subClassOf ex:Employee .         # every Manager is an Employee
+
+# A relationship type (a "property") and the rules for its ends:
+ex:manages  a rdf:Property ;
+            rdfs:domain ex:Manager ;              # the thing doing the managing must be a Manager
+            rdfs:range  ex:Employee .             # the thing managed must be an Employee
+
+# A simple data property (points to text, not to another thing):
+ex:hasName  a rdf:Property ;
+            rdfs:domain ex:Person ;
+            rdfs:range  rdfs:Literal .
+
+
+# ===========================================================
+# PART 2 — THE INSTANCE DATA (the actual facts)
+# Each line below is TRIPLES: subject  predicate  object .
+# These are the real people, expressed using the vocabulary above.
+# ===========================================================
+
+ex:alice a ex:Manager ;          # Alice IS A Manager        (triple 1)
+         ex:hasName "Alice" ;    # Alice HAS NAME "Alice"    (triple 2)
+         ex:manages ex:bob .     # Alice MANAGES Bob         (triple 3)
+
+ex:bob   a ex:Employee ;         # Bob IS AN Employee
+         ex:hasName "Bob" .      # Bob HAS NAME "Bob"

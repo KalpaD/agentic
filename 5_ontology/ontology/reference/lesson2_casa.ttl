@@ -1,0 +1,69 @@
+# ===========================================================
+# lesson2_casa.ttl
+# A tiny LEGAL ontology + real facts from the CASA Agreement.
+# Same two layers as lesson 1: ontology (rules) + instances (facts).
+# ===========================================================
+
+@prefix rdf:  <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix casa: <http://example.org/casa#> .
+
+
+# ===========================================================
+# PART 1 — THE LEGAL ONTOLOGY (the vocabulary for ANY agreement)
+# ===========================================================
+
+# -- Types of things that exist in an enterprise agreement --
+casa:Agreement    a rdfs:Class .
+casa:Clause       a rdfs:Class .
+casa:EmployeeType a rdfs:Class .            # a CATEGORY of worker, not a person
+casa:Entitlement  a rdfs:Class .            # e.g. overtime pay
+
+# -- Relationships allowed between them (the legal "verbs") --
+casa:coversType       a rdf:Property ;       # Agreement -> EmployeeType it applies to
+    rdfs:domain casa:Agreement ; rdfs:range casa:EmployeeType .
+
+casa:excludesType     a rdf:Property ;       # Clause -> EmployeeType it carves out
+    rdfs:domain casa:Clause ;     rdfs:range casa:EmployeeType .
+
+casa:exceptionTo      a rdf:Property ;       # Clause -> Clause it limits
+    rdfs:domain casa:Clause ;     rdfs:range casa:Clause .
+
+casa:grantsEntitlement a rdf:Property ;      # Clause -> Entitlement it creates
+    rdfs:domain casa:Clause ;     rdfs:range casa:Entitlement .
+
+casa:eligibilityRule   a rdf:Property ;      # Entitlement -> plain-text condition
+    rdfs:domain casa:Entitlement ; rdfs:range rdfs:Literal .
+
+casa:sourceClause      a rdf:Property .       # any fact -> the clause it came from (traceability)
+
+
+# ===========================================================
+# PART 2 — THE FACTS (real content, expressed in the vocabulary above)
+# ===========================================================
+
+# --- Worker categories (instances of EmployeeType) ---
+casa:Employee       a casa:EmployeeType .
+casa:Manager        a casa:EmployeeType ; rdfs:subClassOf casa:Employee .
+casa:MedicalOfficer a casa:EmployeeType ; rdfs:subClassOf casa:Manager .   # a kind of (Senior) Manager
+casa:ShiftWorker    a casa:EmployeeType ; rdfs:subClassOf casa:Employee .
+
+# --- Clause 3.1: who the Agreement covers ---
+casa:Agreement2023 a casa:Agreement ;
+    casa:coversType casa:Employee ;
+    casa:sourceClause casa:Clause_3_1 .
+
+casa:Clause_3_1 a casa:Clause .
+
+# --- Clause 3.1.2.2: the EXCLUSION (the first trap) ---
+casa:Clause_3_1_2_2 a casa:Clause ;
+    casa:exceptionTo casa:Clause_3_1 ;
+    casa:excludesType casa:MedicalOfficer .
+
+# --- Clause 36: Overtime entitlement + its eligibility barrier (second trap) ---
+casa:Overtime a casa:Entitlement ;
+    casa:eligibilityRule "Only employees at or below the Overtime barrier are eligible (cl 36.1.1)." ;
+    casa:sourceClause casa:Clause_36 .
+
+casa:Clause_36 a casa:Clause ;
+    casa:grantsEntitlement casa:Overtime .

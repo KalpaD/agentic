@@ -1,0 +1,27 @@
+# Python
+.venv/
+__pycache__/
+*.py[cod]
+*.pyo
+.pytest_cache/
+
+# Environment — never commit API keys
+.env
+# .env.example is intentionally NOT listed here — it is a safe template to commit
+
+# cognee data stores (generated, large, machine-specific)
+.cognee_data/
+.cognee_system/
+
+# Generated output
+output/graph.html
+
+# Processed data (derived from source PDF)
+data/processed/
+
+# macOS
+.DS_Store
+
+# IDE
+.idea/
+.vscode/
