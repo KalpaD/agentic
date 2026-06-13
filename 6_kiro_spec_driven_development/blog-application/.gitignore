@@ -1,0 +1,27 @@
+# Environment variables — never commit secrets
+.env
+
+# Node.js dependencies
+node_modules/
+api/node_modules/
+frontend/node_modules/
+
+# Build outputs
+api/dist/
+frontend/dist/
+
+# TypeScript cache
+*.tsbuildinfo
+
+# Editor / OS
+.DS_Store
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Docker
+.dockerignore
+
+# Test coverage
+coverage/
