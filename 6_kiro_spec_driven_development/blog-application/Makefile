@@ -1,4 +1,4 @@
-.PHONY: dev build test test-integration down logs migrate migrate-rollback
+.PHONY: dev build test test-integration down logs migrate migrate-rollback seed
 
 ## dev: Start all services in development mode with hot-reload
 dev:
@@ -29,8 +29,12 @@ logs:
 
 ## migrate: Run pending database migrations
 migrate:
-	docker compose run --rm api npx knex migrate:latest
+	docker compose run --rm api npx knex --knexfile knexfile.ts migrate:latest
 
 ## migrate-rollback: Rollback the last batch of database migrations
 migrate-rollback:
-	docker compose run --rm api npx knex migrate:rollback
+	docker compose run --rm api npx knex --knexfile knexfile.ts migrate:rollback
+
+## seed: Populate the database with test users (alice + bob, password: password123)
+seed:
+	docker compose run --rm api npx knex --knexfile knexfile.ts seed:run
