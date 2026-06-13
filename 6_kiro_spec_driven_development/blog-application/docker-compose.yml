@@ -1,0 +1,116 @@
+version: '3.9'
+
+services:
+  # ─── React frontend dev server ───────────────────────────────────────────
+  frontend:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.frontend
+      target: dev
+    ports:
+      - '3000:3000'
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    environment:
+      - VITE_API_URL=http://localhost:4000
+    networks:
+      - blog-net
+    depends_on:
+      - api
+
+  # ─── Node.js / Express API ───────────────────────────────────────────────
+  api:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.api
+      target: dev
+    ports:
+      - '4000:4000'
+    volumes:
+      - ./api:/app
+      - /app/node_modules
+    environment:
+      - NODE_ENV=development
+      - DATABASE_URL=postgres://blog:blog@db:5432/blog
+      - PORT=4000
+      - STORAGE_ENDPOINT=http://minio:9000
+      - STORAGE_ACCESS_KEY=minioadmin
+      - STORAGE_SECRET_KEY=minioadmin
+      - STORAGE_BUCKET=blog-images
+      - STORAGE_REGION=us-east-1
+      - STORAGE_PUBLIC_URL=http://localhost:9000/blog-images
+      - JWT_SECRET=dev-secret-change-in-production
+      - JWT_REFRESH_SECRET=dev-refresh-secret-change-in-production
+    networks:
+      - blog-net
+    depends_on:
+      db:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+
+  # ─── PostgreSQL 16 database ──────────────────────────────────────────────
+  db:
+    image: postgres:16-alpine
+    ports:
+      - '5432:5432'
+    environment:
+      POSTGRES_USER: blog
+      POSTGRES_PASSWORD: blog
+      POSTGRES_DB: blog
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - blog-net
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U blog']
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # ─── MinIO object storage ────────────────────────────────────────────────
+  minio:
+    image: minio/minio:latest
+    ports:
+      - '9000:9000'
+      - '9001:9001'
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+    command: server /data --console-address ':9001'
+    volumes:
+      - minio_data:/data
+    networks:
+      - blog-net
+    healthcheck:
+      test: ['CMD-SHELL', 'curl -sf http://localhost:9000/minio/health/live || exit 1']
+      interval: 10s
+      timeout: 10s
+      retries: 5
+      start_period: 15s
+
+  # ─── MinIO bucket initialisation (one-shot) ──────────────────────────────
+  minio-init:
+    image: minio/mc:latest
+    networks:
+      - blog-net
+    depends_on:
+      minio:
+        condition: service_healthy
+    restart: on-failure
+    entrypoint: >
+      /bin/sh -c "
+      mc alias set local http://minio:9000 minioadmin minioadmin;
+      mc mb --ignore-existing local/blog-images;
+      mc anonymous set public local/blog-images;
+      exit 0;
+      "
+
+networks:
+  blog-net:
+    driver: bridge
+
+volumes:
+  postgres_data:
+  minio_data:
