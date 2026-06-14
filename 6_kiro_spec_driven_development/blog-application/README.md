@@ -635,4 +635,132 @@ curl -s -w "POST /api/images (no auth) → %{http_code}\n" \
 
 ---
 
+### ✅ TASK-06 — Frontend Authentication UI
+
+Implements `/login` (AuthPage), an `AuthProvider` that restores the session
+from the `httpOnly` cookie on app load via `GET /api/auth/me`, a
+`ProtectedRoute` that gates `/dashboard` and `/articles/:id/edit`, a `Header`
+with a logout button, and a `fetch` wrapper that transparently calls
+`POST /api/auth/refresh` once on any 401 from a non-auth endpoint and retries
+the original request. JWTs are NOT stored in localStorage — the SPA relies
+entirely on the `httpOnly` cookie set by the API. The Vite dev proxy forwards
+`/api/*` to the api container so cookies stay first-party on `localhost:3000`.
+
+**Run the test suites:**
+
+```bash
+# Frontend unit / integration (React Testing Library, jsdom, mocked fetch)
+docker compose exec frontend npx vitest run
+# Expected: ~14 tests pass
+
+# Backend tests still green (no API changes in TASK-06)
+docker compose exec api npx vitest run
+docker compose exec api npx vitest run --config vitest.integration.config.ts
+```
+
+**Manual verification — in the browser**
+
+Open the app at **http://localhost:3000** and walk through these steps with
+the **DevTools Network and Application → Cookies** panels open so you can see
+what's happening on the wire.
+
+#### Step 1 — First visit redirects unauthenticated users to `/login`
+
+1. Clear cookies for `localhost:3000` (DevTools → Application → Cookies → delete `access_token` + `refresh_token`).
+2. Navigate to `http://localhost:3000/`.
+
+**Expected:** URL ends at `/login`, the **Sign in** form is rendered, no cookies present.
+
+#### Step 2 — Submitting bad credentials shows a generic error
+
+1. Enter `alice` / `wrong-password`, click **Sign in**.
+
+**Expected:** A red alert appears with **exactly** the text:
+`Invalid username or password` (no "username" or "password" field hint). URL
+stays at `/login`. In Network, you see `POST /api/auth/login` → 401.
+
+#### Step 3 — Submitting valid credentials lands on `/dashboard`
+
+1. Enter `alice` / `password123`, click **Sign in**.
+
+**Expected:**
+- Network shows `POST /api/auth/login` → 200.
+- Application → Cookies now lists `access_token` (15 min) and `refresh_token` (7 d),
+  both `HttpOnly` and `SameSite=Lax`.
+- URL is `/dashboard`.
+- The header shows `alice` next to the **Log out** button.
+- Network shows a follow-up `GET /api/auth/me` → 200 on entry.
+
+#### Step 4 — Refreshing the page keeps you signed in (Acceptance Criterion 5)
+
+1. While on `/dashboard`, hit ⌘R / F5.
+
+**Expected:** Brief "Loading…" flash, then dashboard again. Network shows a
+fresh `GET /api/auth/me` → 200 (session restored from the still-valid cookie).
+
+#### Step 5 — Navigating to `/dashboard` while signed out redirects to `/login`
+
+1. Clear both cookies in DevTools.
+2. Manually visit `http://localhost:3000/dashboard`.
+
+**Expected:** URL bounces to `/login`. (Same behavior for `/articles/<any-uuid>/edit`.)
+
+#### Step 6 — Logout clears cookies and returns to `/login`
+
+1. From `/dashboard` (signed in), click **Log out**.
+
+**Expected:**
+- Network shows `POST /api/auth/logout` → 200.
+- Set-Cookie headers in the response clear both cookies (`Expires=Thu, 01 Jan 1970`).
+- URL bounces to `/login`. The dashboard is no longer reachable until you sign in again.
+
+#### Step 7 — `GET /api/auth/me` is the session-restore probe
+
+Confirm the SPA uses this endpoint (and not `localStorage`) to decide whether
+you're signed in.
+
+1. Sign in normally.
+2. In DevTools → Application → Local Storage and Session Storage, confirm
+   **no entries** for `localhost:3000`.
+3. In Network, filter to `auth/me` and refresh the page — you should see the
+   call fire on every cold load.
+
+#### Step 8 — Transparent token refresh on 401 (advanced)
+
+This is hard to exercise via the UI because the access token TTL is 15 min and
+there are no protected SPA-driven endpoints to call yet (those arrive in
+TASK-07). You can exercise the underlying mechanism through the Vite proxy:
+
+```bash
+# Sign in via the proxy and capture cookies
+curl -s -X POST http://localhost:3000/api/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"username":"alice","password":"password123"}' \
+  -c /tmp/proxy-cookies.txt >/dev/null
+grep -E "access_token|refresh_token" /tmp/proxy-cookies.txt
+# Expected: both cookies set on `localhost`
+
+# /me works
+curl -s -b /tmp/proxy-cookies.txt http://localhost:3000/api/auth/me
+# Expected: {"user":{"id":"...","username":"alice"}}
+
+# Refresh issues a new access cookie via the proxy
+curl -s -i -X POST http://localhost:3000/api/auth/refresh \
+  -b /tmp/proxy-cookies.txt | grep -E "HTTP/|access_token"
+# Expected: HTTP/1.1 200 OK + new Set-Cookie: access_token=...
+
+# Logout clears cookies via the proxy
+curl -s -i -X POST http://localhost:3000/api/auth/logout \
+  -b /tmp/proxy-cookies.txt | grep -E "HTTP/|Set-Cookie" | head -5
+# Expected: 200 + both cookies cleared (Expires=Thu, 01 Jan 1970)
+```
+
+The frontend's `apiFetch` (in `frontend/src/api/client.ts`) wraps every API
+call; on any 401 from a non-`/api/auth/*` endpoint it makes the same `POST
+/api/auth/refresh` call you just ran by hand and retries the original request.
+Unit tests in `frontend/src/api/client.test.ts` cover the interceptor logic
+end-to-end with a mocked fetch sequence.
+
+---
+
 *This README is updated after each completed task.*
