@@ -1,6 +1,7 @@
 import knex from 'knex';
 import { afterAll, describe, expect, it } from 'vitest';
 import { createApp } from './app';
+import { explodingStorage } from './test/stubs';
 
 /**
  * Unit tests for the Express application setup. Uses Node's built-in http
@@ -19,7 +20,7 @@ describe('GET /health', () => {
   });
 
   it('returns 200 OK with status: ok', async () => {
-    const app = createApp(stubDb);
+    const app = createApp(stubDb, explodingStorage);
 
     const server = await new Promise<ReturnType<typeof app.listen>>((resolve) => {
       const s = app.listen(0, () => resolve(s));

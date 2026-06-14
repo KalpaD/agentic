@@ -11,6 +11,7 @@ import {
 } from 'vitest';
 import { createApp } from '../app';
 import { setupTestDb, teardownTestDb } from '../test/integration-db';
+import { explodingStorage } from '../test/stubs';
 import { hashRefreshToken } from './jwt';
 
 interface RawResponse {
@@ -63,7 +64,7 @@ describe('Auth API (integration)', () => {
     await db.migrate.latest();
     await db.seed.run();
 
-    const app: Application = createApp(db);
+    const app: Application = createApp(db, explodingStorage);
     server = await new Promise<Server>((resolve) => {
       const s = app.listen(0, () => resolve(s));
     });

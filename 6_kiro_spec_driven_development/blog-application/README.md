@@ -487,4 +487,152 @@ done
 
 ---
 
+### ✅ TASK-05 — Image Upload API
+
+Implements `POST /api/images` — multipart upload, capped at 10 MB by multer
+(oversized streams aborted early), MIME-restricted to JPEG/PNG/GIF/WebP, JWT-gated.
+Stores objects via AWS SDK v3 in any S3-compatible backend (MinIO locally, real
+S3 in production — only `STORAGE_*` env vars change). Returns
+`{ url: "<STORAGE_PUBLIC_URL>/<key>" }` on success and records metadata in
+`article_images`. S3 timeout (10 s) or any storage error → 502 with no DB row.
+
+Storage keys are `<userId>/<uuid>.<ext>` — never the user-supplied filename, so
+there is no path-traversal vector.
+
+**Run the test suites:**
+
+```bash
+# Unit tests (validation + service + everything from prior tasks)
+docker compose exec api npx vitest run
+# Expected: ~51 tests pass
+
+# Integration tests (uploads against the real MinIO container)
+docker compose exec api npx vitest run --config vitest.integration.config.ts
+# Expected: ~42 tests pass (4 new images + 16 articles + 10 auth + 12 schema)
+```
+
+**Manual verification — per sub-task**
+
+Set up the working files once:
+
+```bash
+# Fresh alice login
+curl -s -X POST http://localhost:4000/api/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"username":"alice","password":"password123"}' \
+  -c /tmp/blog-cookies.txt >/dev/null
+
+# A real, tiny (67-byte) 1×1 transparent PNG
+python3 -c "
+import base64; open('/tmp/test.png','wb').write(base64.b64decode(
+  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8/wcAAwAB/epv2gAAAABJRU5ErkJggg=='))"
+
+# 10 MB + 1 byte of zeros (triggers multer's size cap)
+python3 -c "open('/tmp/big.bin','wb').write(b'\\x00' * (10*1024*1024 + 1))"
+
+# A plain-text file with the wrong MIME
+echo "hello world" > /tmp/text.txt
+```
+
+#### Step 1 — `POST /api/images` accepts multipart and returns `{url}`
+
+```bash
+curl -s -i -X POST http://localhost:4000/api/images \
+  -b /tmp/blog-cookies.txt -F "file=@/tmp/test.png" | grep -E "HTTP/|url"
+# Expected: HTTP/1.1 200 OK
+#           {"url":"http://localhost:9000/blog-images/<alice-uuid>/<uuid>.png"}
+```
+
+#### Step 2 — The returned URL is reachable (MinIO serves the object)
+
+```bash
+URL=$(curl -s -X POST http://localhost:4000/api/images \
+       -b /tmp/blog-cookies.txt -F "file=@/tmp/test.png" \
+       | python3 -c "import sys,json;print(json.load(sys.stdin)['url'])")
+echo "url=$URL"
+
+curl -s -w "\nstatus=%{http_code} size=%{size_download}\n" -o /tmp/dl.bin "$URL"
+diff /tmp/test.png /tmp/dl.bin && echo "✓ bytes match" || echo "✗ BYTES DIFFER"
+# Expected: status=200 size=67, ✓ bytes match
+```
+
+#### Step 3 — A row is created in `article_images` on success
+
+```bash
+docker compose exec -T db psql -U blog -d blog -c \
+  "SELECT user_id, storage_key, mime_type, size_bytes
+     FROM article_images
+    ORDER BY uploaded_at DESC LIMIT 1;"
+# Expected: one row with alice's user_id, a <uuid>/<uuid>.png key,
+#           mime_type=image/png, size_bytes=67
+```
+
+#### Step 4 — Storage keys never reference the user-supplied filename
+
+```bash
+curl -s -X POST http://localhost:4000/api/images \
+  -b /tmp/blog-cookies.txt \
+  -F "file=@/tmp/test.png;filename=../../etc/passwd" \
+  | python3 -c "import sys,json;print('key path =', json.load(sys.stdin)['url'].split('/blog-images/')[1])"
+# Expected: key path = <alice-uuid>/<uuid>.png  (NO "../" or "passwd")
+```
+
+#### Step 5 — Oversized uploads → 400 with the size message (Property 11)
+
+```bash
+curl -s -w "\nstatus=%{http_code}\n" -X POST http://localhost:4000/api/images \
+  -b /tmp/blog-cookies.txt -F "file=@/tmp/big.bin;type=image/jpeg"
+# Expected: {"error":"File exceeds the 10 MB maximum allowed size"}
+#           status=400
+```
+
+#### Step 6 — Unsupported MIME types → 400 listing accepted formats (Property 11)
+
+```bash
+curl -s -w "\nstatus=%{http_code}\n" -X POST http://localhost:4000/api/images \
+  -b /tmp/blog-cookies.txt -F "file=@/tmp/text.txt;type=text/plain"
+# Expected: {"error":"Unsupported file format. Accepted formats: JPEG, PNG, GIF, WebP"}
+#           status=400
+```
+
+#### Step 7 — Error cases create no `article_images` rows (Acceptance Criterion 5)
+
+```bash
+BEFORE=$(docker compose exec -T db psql -U blog -d blog -tAc \
+         "SELECT count(*) FROM article_images;")
+curl -s -X POST http://localhost:4000/api/images \
+  -b /tmp/blog-cookies.txt -F "file=@/tmp/big.bin;type=image/jpeg" >/dev/null
+curl -s -X POST http://localhost:4000/api/images \
+  -b /tmp/blog-cookies.txt -F "file=@/tmp/text.txt;type=text/plain" >/dev/null
+AFTER=$(docker compose exec -T db psql -U blog -d blog -tAc \
+        "SELECT count(*) FROM article_images;")
+echo "before=$BEFORE after=$AFTER"
+# Expected: before == after (rejected requests leave the table untouched)
+```
+
+#### Step 8 — Storage failure (502 path)
+
+MinIO returning an error is the canonical 502 case. Easiest way to provoke it:
+temporarily stop the MinIO container and watch the upload bounce.
+
+```bash
+docker compose stop minio
+curl -s -w "\nstatus=%{http_code}\n" -X POST http://localhost:4000/api/images \
+  -b /tmp/blog-cookies.txt -F "file=@/tmp/test.png"
+# Expected: {"error":"Image upload failed"}
+#           status=502
+docker compose start minio
+```
+
+#### Step 9 — `POST /api/images` without a JWT → 401
+
+```bash
+curl -s -w "POST /api/images (no auth) → %{http_code}\n" \
+  -o /dev/null -X POST http://localhost:4000/api/images \
+  -F "file=@/tmp/test.png"
+# Expected: 401
+```
+
+---
+
 *This README is updated after each completed task.*
