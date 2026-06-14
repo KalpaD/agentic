@@ -12,6 +12,7 @@ import {
 import { createApp } from '../app';
 import { signAccessToken } from '../auth/jwt';
 import { setupTestDb, teardownTestDb } from '../test/integration-db';
+import { explodingStorage } from '../test/stubs';
 import { updateArticle } from './service';
 
 interface Article {
@@ -47,7 +48,7 @@ describe('Articles API (integration)', () => {
     aliceToken = signAccessToken(aliceId);
     bobToken = signAccessToken(bobId);
 
-    const app: Application = createApp(db);
+    const app: Application = createApp(db, explodingStorage);
     server = await new Promise<Server>((resolve) => {
       const s = app.listen(0, () => resolve(s));
     });

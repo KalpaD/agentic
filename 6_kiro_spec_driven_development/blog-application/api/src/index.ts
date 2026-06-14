@@ -1,6 +1,7 @@
 import dotenv from 'dotenv';
 import { createApp } from './app';
 import db from './db/knex';
+import { createStorageClient, loadStorageConfig } from './images/storage';
 
 // Load environment variables from .env file
 dotenv.config();
@@ -15,7 +16,8 @@ async function start(): Promise<void> {
   // eslint-disable-next-line no-console
   console.log('Migrations complete.');
 
-  const app = createApp(db);
+  const storage = createStorageClient(loadStorageConfig());
+  const app = createApp(db, storage);
 
   app.listen(PORT, () => {
     // eslint-disable-next-line no-console
