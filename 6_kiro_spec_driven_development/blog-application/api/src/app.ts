@@ -4,6 +4,7 @@ import express, { Application, Request, Response } from 'express';
 import { Knex } from 'knex';
 import { requireAuth } from './auth/middleware';
 import { createAuthRouter } from './auth/routes';
+import { createArticlesRouter } from './articles/routes';
 
 /**
  * Creates and configures the Express application.
@@ -22,10 +23,10 @@ export function createApp(db: Knex): Application {
   });
 
   app.use('/api/auth', createAuthRouter(db));
+  app.use('/api/articles', createArticlesRouter(db));
 
-  // Pre-wire the JWT gate on article & image roots so unauthenticated requests
-  // are rejected even before TASK-04 / TASK-05 mount the actual route handlers.
-  app.use('/api/articles', requireAuth);
+  // Pre-wire the JWT gate on /api/images so unauthenticated requests are
+  // rejected even before TASK-05 mounts the actual route handlers.
   app.use('/api/images', requireAuth);
 
   return app;

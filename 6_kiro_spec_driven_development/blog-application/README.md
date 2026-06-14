@@ -243,13 +243,246 @@ docker compose exec -T db psql -U blog -d blog -c \
 #### Step 8 — JWT middleware pre-gates `/api/articles` and `/api/images`
 
 ```bash
-# Neither route has handlers yet (TASK-04 / TASK-05), but the middleware
-# already 401s on missing or invalid tokens.
+# /api/images still has no handlers (TASK-05); /api/articles is implemented in
+# TASK-04 but still 401s without auth via the same middleware.
 curl -s -w "GET  /api/articles → %{http_code}\n" -o /dev/null \
   http://localhost:4000/api/articles
 curl -s -w "POST /api/images   → %{http_code}\n" -o /dev/null \
   -X POST http://localhost:4000/api/images
 # Expected: both → 401
+```
+
+---
+
+### ✅ TASK-04 — Article CRUD API
+
+Implements `POST/GET/PATCH/DELETE /api/articles[/...]` — every operation
+JWT-gated and owner-scoped via `WHERE id = ? AND user_id = ?` (no read-then-check
+TOCTOU). Bodies validated with Zod; `PATCH` runs inside a Postgres
+`statement_timeout = 2000` and surfaces SQLSTATE 57014 as a 504. `DELETE`
+removes the article's `article_images` rows in the same transaction and logs
+storage keys for TASK-05 to clean up in MinIO.
+
+**Run the test suites:**
+
+```bash
+# Unit tests (schemas + auth + app health)
+docker compose exec api npx vitest run
+# Expected: ~32 tests pass
+
+# Integration tests (article CRUD + auth + schema)
+docker compose exec api npx vitest run --config vitest.integration.config.ts
+# Expected: ~38 tests pass (12 schema + 10 auth + 16 articles)
+```
+
+**Manual verification — per sub-task**
+
+All steps assume a fresh alice login cookie. Re-run if you need one:
+
+```bash
+curl -s -X POST http://localhost:4000/api/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"username":"alice","password":"password123"}' \
+  -c /tmp/blog-cookies.txt >/dev/null
+curl -s -X POST http://localhost:4000/api/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"username":"bob","password":"password123"}' \
+  -c /tmp/blog-cookies-bob.txt >/dev/null
+```
+
+#### Step 1 — `POST /api/articles` creates a blank article owned by the caller
+
+```bash
+curl -s -i -X POST http://localhost:4000/api/articles \
+  -b /tmp/blog-cookies.txt | head -1
+# Expected: HTTP/1.1 201 Created
+
+curl -s -X POST http://localhost:4000/api/articles \
+  -b /tmp/blog-cookies.txt | python3 -m json.tool
+# Expected: title="", body={"type":"doc","content":[]}, status="draft", user_id = alice's UUID
+```
+
+#### Step 2 — `PATCH /api/articles/:id` persists title + body (round-trip)
+
+```bash
+# Grab the most recent article id for alice
+ID=$(curl -s "http://localhost:4000/api/articles" -b /tmp/blog-cookies.txt \
+     | python3 -c "import sys,json;print(json.load(sys.stdin)['articles'][0]['id'])")
+
+curl -s -X PATCH "http://localhost:4000/api/articles/$ID" \
+  -b /tmp/blog-cookies.txt -H "Content-Type: application/json" \
+  -d '{"title":"First post","body":{"type":"doc","content":[{"type":"paragraph","content":[{"type":"text","text":"Hello world"}]}]}}' \
+  | python3 -m json.tool
+
+curl -s "http://localhost:4000/api/articles/$ID" -b /tmp/blog-cookies.txt \
+  | python3 -m json.tool
+# Expected: same title + body returned (Property 8 — save/load round-trip)
+```
+
+#### Step 3 — Owner isolation: bob cannot read or write alice's article (Property 9)
+
+```bash
+curl -s -w "GET  → %{http_code}\n" -o /dev/null \
+  "http://localhost:4000/api/articles/$ID" -b /tmp/blog-cookies-bob.txt
+curl -s -w "PATCH → %{http_code}\n" -o /dev/null \
+  -X PATCH "http://localhost:4000/api/articles/$ID" \
+  -b /tmp/blog-cookies-bob.txt -H "Content-Type: application/json" \
+  -d '{"title":"hacked"}'
+curl -s -w "DELETE → %{http_code}\n" -o /dev/null \
+  -X DELETE "http://localhost:4000/api/articles/$ID" -b /tmp/blog-cookies-bob.txt
+# Expected: all three → 404 (existence not disclosed)
+
+# Confirm alice's title was not modified by bob's PATCH attempt
+curl -s "http://localhost:4000/api/articles/$ID" -b /tmp/blog-cookies.txt \
+  | python3 -c "import sys,json;print('title=',json.load(sys.stdin)['article']['title'])"
+# Expected: title= First post
+```
+
+#### Step 4 — Title >200 chars → 400 (Zod validation)
+
+```bash
+LONG=$(python3 -c "print('x'*201)")
+curl -s -w "\nstatus=%{http_code}\n" \
+  -X PATCH "http://localhost:4000/api/articles/$ID" \
+  -b /tmp/blog-cookies.txt -H "Content-Type: application/json" \
+  -d "{\"title\":\"$LONG\"}"
+# Expected: status=400 with details.fieldErrors.title containing
+#           "Title may not exceed 200 characters"
+```
+
+#### Step 5 — `GET /api/articles` returns paginated metadata (Property 14)
+
+```bash
+# Create enough articles to spill across pages (25 total for alice)
+for i in $(seq 1 25); do
+  curl -s -X POST http://localhost:4000/api/articles \
+    -b /tmp/blog-cookies.txt >/dev/null
+done
+
+curl -s "http://localhost:4000/api/articles?page=1&limit=20" \
+  -b /tmp/blog-cookies.txt \
+  | python3 -c "import sys,json;d=json.load(sys.stdin);print('page=',d['page'],'pages=',d['pages'],'total=',d['total'],'len=',len(d['articles']))"
+# Expected: page=1, pages>=2, total>=25, len=20
+
+curl -s "http://localhost:4000/api/articles?page=2&limit=20" \
+  -b /tmp/blog-cookies.txt \
+  | python3 -c "import sys,json;d=json.load(sys.stdin);print('page=',d['page'],'len=',len(d['articles']))"
+# Expected: page=2, len = (total - 20)
+```
+
+#### Step 6 — List is sorted by `updated_at DESC` (Property 13)
+
+```bash
+# Touch one of the older articles by patching it — it should jump to the top.
+TARGET=$(curl -s "http://localhost:4000/api/articles?page=2&limit=20" \
+         -b /tmp/blog-cookies.txt \
+         | python3 -c "import sys,json;print(json.load(sys.stdin)['articles'][-1]['id'])")
+curl -s -X PATCH "http://localhost:4000/api/articles/$TARGET" \
+  -b /tmp/blog-cookies.txt -H "Content-Type: application/json" \
+  -d '{"title":"jumped-to-top"}' >/dev/null
+
+curl -s "http://localhost:4000/api/articles?page=1&limit=20" \
+  -b /tmp/blog-cookies.txt \
+  | python3 -c "import sys,json;a=json.load(sys.stdin)['articles'][0];print('top title=',a['title'],'id=',a['id'])"
+# Expected: top title= jumped-to-top, id= $TARGET
+```
+
+#### Step 7 — `DELETE /api/articles/:id` cascades to `article_images` (Property 15)
+
+```bash
+NEW=$(curl -s -X POST http://localhost:4000/api/articles \
+       -b /tmp/blog-cookies.txt \
+       | python3 -c "import sys,json;print(json.load(sys.stdin)['article']['id'])")
+
+ALICE_UID=$(curl -s "http://localhost:4000/api/auth/me" -b /tmp/blog-cookies.txt \
+            | python3 -c "import sys,json;print(json.load(sys.stdin)['user']['id'])")
+
+# Seed two image rows pointing at the article
+docker compose exec -T db psql -U blog -d blog -c \
+  "INSERT INTO article_images(article_id,user_id,storage_key,url,size_bytes,mime_type)
+   VALUES ('$NEW','$ALICE_UID','k/1.png','http://x/1',100,'image/png'),
+          ('$NEW','$ALICE_UID','k/2.png','http://x/2',200,'image/png');"
+
+# Confirm two rows exist
+docker compose exec -T db psql -U blog -d blog -tAc \
+  "SELECT count(*) FROM article_images WHERE article_id = '$NEW';"
+# Expected: 2
+
+# Delete the article — service removes article_images rows in the same tx
+curl -s -w "status=%{http_code}\n" -X DELETE \
+  "http://localhost:4000/api/articles/$NEW" -b /tmp/blog-cookies.txt
+# Expected: {"ok":true}status=200
+
+# Image rows are gone
+docker compose exec -T db psql -U blog -d blog -tAc \
+  "SELECT count(*) FROM article_images WHERE article_id = '$NEW';"
+# Expected: 0
+
+# Article gone — subsequent GET is 404
+curl -s -w "GET after DELETE → %{http_code}\n" -o /dev/null \
+  "http://localhost:4000/api/articles/$NEW" -b /tmp/blog-cookies.txt
+# Expected: 404
+
+# The API logs the storage keys for TASK-05 to clean up later
+docker compose logs --tail=20 api | grep "TASK-05 pending"
+# Expected: a log line listing ['k/1.png','k/2.png']
+```
+
+#### Step 8 — `PATCH` 2-second timeout returns 504 (SQLSTATE 57014 → 504)
+
+The route runs the UPDATE inside a transaction with
+`SET LOCAL statement_timeout = 2000`. We exercise the mechanism here using a
+forced slow query — proves the same code that the route catches and converts to
+504.
+
+```bash
+docker compose exec -T db psql -U blog -d blog -c "
+BEGIN;
+SET LOCAL statement_timeout = 50;
+SELECT pg_sleep(0.2);
+COMMIT;
+" 2>&1 | grep -E "ERROR|statement timeout"
+# Expected: ERROR:  canceling statement due to statement timeout
+```
+
+#### Step 9 — Concurrent saves by different users do not cross-contaminate (Property 16)
+
+```bash
+A=$(curl -s -X POST http://localhost:4000/api/articles -b /tmp/blog-cookies.txt \
+    | python3 -c "import sys,json;print(json.load(sys.stdin)['article']['id'])")
+B=$(curl -s -X POST http://localhost:4000/api/articles -b /tmp/blog-cookies-bob.txt \
+    | python3 -c "import sys,json;print(json.load(sys.stdin)['article']['id'])")
+
+# Fire both PATCHes in parallel (background shell jobs)
+curl -s -X PATCH "http://localhost:4000/api/articles/$A" \
+  -b /tmp/blog-cookies.txt -H "Content-Type: application/json" \
+  -d '{"title":"alice writes"}' >/dev/null &
+curl -s -X PATCH "http://localhost:4000/api/articles/$B" \
+  -b /tmp/blog-cookies-bob.txt -H "Content-Type: application/json" \
+  -d '{"title":"bob writes"}' >/dev/null &
+wait
+
+curl -s "http://localhost:4000/api/articles/$A" -b /tmp/blog-cookies.txt \
+  | python3 -c "import sys,json;print('alice article title =', json.load(sys.stdin)['article']['title'])"
+curl -s "http://localhost:4000/api/articles/$B" -b /tmp/blog-cookies-bob.txt \
+  | python3 -c "import sys,json;print('bob article title   =', json.load(sys.stdin)['article']['title'])"
+# Expected: alice article title = alice writes
+#           bob article title   = bob writes
+```
+
+#### Step 10 — All routes still require auth
+
+```bash
+for VERB_PATH in "GET /api/articles" "POST /api/articles" \
+                 "GET /api/articles/00000000-0000-0000-0000-000000000000" \
+                 "PATCH /api/articles/00000000-0000-0000-0000-000000000000" \
+                 "DELETE /api/articles/00000000-0000-0000-0000-000000000000"; do
+  VERB=${VERB_PATH%% *}
+  P=${VERB_PATH#* }
+  curl -s -w "$VERB $P → %{http_code}\n" -o /dev/null \
+    -X "$VERB" "http://localhost:4000$P"
+done
+# Expected: every line ends in 401
 ```
 
 ---
