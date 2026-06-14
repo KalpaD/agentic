@@ -1,15 +1,26 @@
-import { describe, it, expect } from 'vitest';
+import knex from 'knex';
+import { afterAll, describe, expect, it } from 'vitest';
 import { createApp } from './app';
 
 /**
- * Unit tests for the Express application setup.
- * Uses Node's built-in http module to avoid a supertest dependency at scaffold stage.
+ * Unit tests for the Express application setup. Uses Node's built-in http
+ * module instead of supertest. The Knex instance is created but never queried
+ * (no connection is opened until a query runs), so /health stays self-contained.
  */
 describe('GET /health', () => {
-  it('returns 200 OK with status: ok', async () => {
-    const app = createApp();
+  // Real Knex client, but no connection ever opens — /health does not touch DB.
+  const stubDb = knex({
+    client: 'pg',
+    connection: { connectionString: 'postgres://stub:stub@localhost:1/stub' },
+  });
 
-    // Start on a random OS-assigned port to avoid conflicts in CI
+  afterAll(async () => {
+    await stubDb.destroy();
+  });
+
+  it('returns 200 OK with status: ok', async () => {
+    const app = createApp(stubDb);
+
     const server = await new Promise<ReturnType<typeof app.listen>>((resolve) => {
       const s = app.listen(0, () => resolve(s));
     });
@@ -17,7 +28,7 @@ describe('GET /health', () => {
     const port = (server.address() as { port: number }).port;
 
     const response = await fetch(`http://localhost:${port}/health`);
-    const body = await response.json() as { status: string };
+    const body = (await response.json()) as { status: string };
 
     server.close();
 
