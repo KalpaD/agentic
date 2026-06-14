@@ -72,6 +72,34 @@ make down
 | `make migrate`          | Run pending DB migrations             |
 | `make migrate-rollback` | Rollback last migration               |
 
+### ✅ TASK-02 — Database Schema and Migrations
+
+**Verify:**
+
+```bash
+# Migrations run automatically on startup — check API logs
+docker compose logs api | grep -E "Migrations|migration"
+# Expected: "Running database migrations…" then "Migrations complete."
+
+# Check all 4 tables exist
+docker compose exec db psql -U blog -d blog -c "\dt"
+# Expected: users, refresh_tokens, articles, article_images
+
+# Check the performance index exists
+docker compose exec db psql -U blog -d blog -c "\di idx_articles_user_updated"
+
+# Seed test users (only needed once, or after a clean wipe)
+make seed
+
+# Check seed users exist
+docker compose exec db psql -U blog -d blog -c "SELECT username FROM users;"
+# Expected: alice, bob
+
+# Manual migration commands
+make migrate           # run pending migrations
+make migrate-rollback  # rollback last batch
+```
+
 ---
 
 *This README is updated after each completed task.*
