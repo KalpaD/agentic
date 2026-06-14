@@ -15,7 +15,7 @@ async function start(): Promise<void> {
   // eslint-disable-next-line no-console
   console.log('Migrations complete.');
 
-  const app = createApp();
+  const app = createApp(db);
 
   app.listen(PORT, () => {
     // eslint-disable-next-line no-console
